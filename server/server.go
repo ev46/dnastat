@@ -18,7 +18,7 @@ type Page struct {
 }
 
 func main() {
-
+	// register endpoint handlers here
 	http.HandleFunc("/", handler)
 	http.HandleFunc("/top", topDestinations)
 	http.HandleFunc("/total", jsonTotal)
@@ -28,6 +28,11 @@ func main() {
 	log.Fatal(http.ListenAndServe("localhost:8000", nil))
 }
 
+// JSON endpoint hanlders, note that we create a new REDIS connection everytime because
+// the handler is ran in its own goroutine (thread), but Redis is designed to make the connection
+// creation very fast, so there is not much overhead
+
+// returns the bottom x addresses, responds to GET <statserver>/botip?limit=x
 func jsonBot(w http.ResponseWriter, req *http.Request) {
 	number := req.FormValue("limit") //read the limit from the request
 
@@ -45,6 +50,7 @@ func jsonBot(w http.ResponseWriter, req *http.Request) {
 	encoder.Encode(list)
 }
 
+// returns the top x addresses, responds to GET <statserver>/topip?limit=x
 func jsonTop(w http.ResponseWriter, req *http.Request) {
 
 	number := req.FormValue("limit") // read the limit from the request
@@ -62,7 +68,7 @@ func jsonTop(w http.ResponseWriter, req *http.Request) {
 	encoder.Encode(list)
 }
 
-// JSON end point for total number of IPs being tracked
+// JSON end point for total number of IPs being tracked, responds to GET <statserver>/total
 func jsonTotal(w http.ResponseWriter, req *http.Request) {
 
 	client, err := redis.Dial("tcp", "localhost:6379")
@@ -82,10 +88,12 @@ func jsonTotal(w http.ResponseWriter, req *http.Request) {
 
 }
 
+// http (html rendering) handlers
 func loadTopPage(body []byte) *Page {
 	return &Page{Title: "Top IPs", Body: body}
 }
 
+// renders the <name>.html template, templates should be deployed with the executables
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	t, _ := template.ParseFiles(tmpl + ".html")
 	t.Execute(w, p)
@@ -106,8 +114,7 @@ func topDestinations(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	response := client.Cmd("ZREVRANGE", "popularity", "0", "-1", "WITHSCORES")
-
-	//ZREVRANGE traffic 0 -1 WITHSCORES
+	// here we create a byte buffer to construct the html response
 	buffer := bytes.NewBufferString("<TABLE>")
 
 	l, _ := response.List()
@@ -119,7 +126,6 @@ func topDestinations(rw http.ResponseWriter, req *http.Request) {
 	buffer.WriteString("</TABLE>")
 
 	p := loadTopPage(buffer.Bytes())
-	//fmt.Println("PAGE body: " + string(p.Body[:]))
 	renderTemplate(rw, "top", p)
 
 }
